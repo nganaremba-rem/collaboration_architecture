@@ -26,8 +26,9 @@
 9. [💰 費用 (Cost)](#-費用-cost)
 10. [✅ 動作確認 (Verification)](#-動作確認-verification)
 11. [🚀 速度と「100MBの上限」 (Performance & the 100 MB limit)](#-速度と100mbの上限-performance--the-100-mb-limit)
-12. [👍 良い点・注意点 (Pros & Cons)](#-良い点注意点-pros--cons)
-13. [🔗 出典 (Sources)](#-出典--sources)
+12. [🚚 移行とアクセス対象 (Migration & Access Targets)](#-移行とアクセス対象-migration--access-targets)
+13. [👍 良い点・注意点 (Pros & Cons)](#-良い点注意点-pros--cons)
+14. [🔗 出典 (Sources)](#-出典--sources)
 
 ---
 
@@ -517,6 +518,142 @@ Everyone comes in through an address like `test.yourcompany.com` that goes throu
 
 ---
 
+## 🚚 移行とアクセス対象 (Migration & Access Targets)
+
+実際の質問に対する詳しい回答です。**(1) 既存サーバーの移行**と **(2) 安全にアクセスしたい対象**の2つに分けて説明します。
+Detailed answers to the real questions, in two parts: **(1) migrating existing servers** and **(2) what we want to give secure access to.**
+
+---
+
+### 🚚 パート1:AWSアカウント作成と既存サーバーの移行 (Part 1 — New AWS account & migrating existing servers)
+
+**❓ 質問 / Question**
+
+> テスト用のAWSアカウントを作る場合、今ある **EC2 インスタンス**と **RDS** は移行できますか?
+> （本番インスタンスの移行も可。停止が必要なら、お客様に事前通知し、利用していない時間帯に作業します。）
+> 対象:**受付予約システム**と **L-Three Solution のホームページ（CloudFront + S3）**。
+>
+> If we create a (test) AWS account, can the current **EC2 instances** and **RDS** be migrated?
+> (Migrating the production instance is also acceptable. If a stop is needed, we notify the customer
+> in advance and work during unused hours.) Targets: the **reception reservation system** and the
+> **L-Three Solution homepage (CloudFront + S3)**.
+
+**✅ 回答 / Answer**
+
+はい、すべて新しいAWSアカウントに移行できます。アカウントをまたぐ移行なので、切り替えの瞬間に**短い停止時間**が発生します（事前通知＋非利用時間の作業という御計画と合致します）。
+
+Yes — all of them can be migrated to a new AWS account. Because it crosses accounts, there is a **short
+downtime at the cutover moment** (which fits your plan: notify in advance, work during unused hours).
+
+**🔧 技術的:各リソースの移行方法**
+
+| リソース | 移行方法 | 停止時間 |
+|---|---|---|
+| **EC2**（受付予約システムのサーバー） | ① インスタンスの **AMI（マシンイメージ）** を作成 → ② 新アカウントへ **共有** → ③ 新アカウントのVPC内で **そのAMIから起動**。OS・アプリ・設定・証明書・cron などサーバー丸ごと移る。 | 停止／スナップショット ＋ 切替の作業枠（通常 数十分） |
+| **RDS**（データベース） | ① **手動スナップショット**を取得 → ② 新アカウントへ **共有** → ③ 新VPCで **新DBとして復元**。 | 最終同期・切替の作業枠 |
+| **ホームページ = CloudFront + S3** | S3 は「移動」ではなく、**中身を新バケットへコピー**（`aws s3 sync`）→ それを指す **CloudFront を作り直し** → **DNS を切替**。 | ほぼゼロ（DNS切替のみ） |
+
+**⚠️ お客様に伝えるべき重要点**
+
+1. **IPアドレスが変わります。** 移行後、サーバーの住所が新しくなるので、DNS／Elastic IP／Cloudflare のホスト名を**指し直す**必要があります。（Cloudflare を前に置いていれば、トンネルの宛先を直すだけで楽になります。）
+2. **暗号化された RDS スナップショット**は1手間増えます。**カスタマー管理の KMS キー**を使い、そのキーも共有する必要があります（AWS既定のキーはアカウント間で共有不可）。
+3. **RDS の停止時間を最小化したい場合**は、**AWS DMS（Database Migration Service）**で新旧DBを同期し続け、停止を **約5分未満**に抑えられます。スナップショット復元はより簡単ですが、作業枠は長めになります。
+4. **本番切替の前に、復元したコピーを新アカウントで必ずテスト**してください。
+
+> 💡 補足:別アカウントは**任意**です。分離が目的なら、**同じアカウント内の別VPC**でもよく、その場合アカウントをまたぐ移行は不要です。請求やログインまで完全に分けたい時だけ、別アカウントにします。
+
+*English*
+
+**🔧 Technical: how each resource migrates**
+
+| Resource | Method | Downtime |
+|---|---|---|
+| **EC2** (reception reservation system server) | ① Create an **AMI (machine image)** of the instance → ② **share** it with the new account → ③ **launch from that AMI** inside the new account's VPC. The whole server moves: OS, app, configs, certs, cron. | Stop/snapshot + cutover window (usually tens of minutes) |
+| **RDS** (database) | ① Take a **manual snapshot** → ② **share** it with the new account → ③ **restore as a new DB** in the new VPC. | Final-sync / cutover window |
+| **Homepage = CloudFront + S3** | S3 isn't "moved" — **copy the contents to a new bucket** (`aws s3 sync`) → **recreate CloudFront** pointing at it → **switch DNS**. | Near-zero (just a DNS switch) |
+
+**⚠️ Important points to tell the customer**
+
+1. **IP addresses change.** After migration the servers get new addresses, so DNS / Elastic IP / Cloudflare hostnames must be **repointed**. (If Cloudflare is already in front, you just update the tunnel's target — easier.)
+2. **Encrypted RDS snapshots** need one extra step: use a **customer-managed KMS key** and share that key too (the default AWS-managed key cannot be shared across accounts).
+3. **To minimize RDS downtime**, use **AWS DMS (Database Migration Service)** to keep old and new DB in sync and cut the outage to **under ~5 minutes**. A plain snapshot-restore is simpler but needs a longer window.
+4. **Always test the restored copy** in the new account **before** the final cutover.
+
+> 💡 Note: A separate account is **optional**. If the goal is just isolation, a **separate VPC in the same account** works too and avoids cross-account migration. Use a separate account only if you want fully separate billing/logins.
+
+---
+
+### 🔐 パート2:安全にアクセスしたい対象 (Part 2 — Secure access targets)
+
+**❓ 質問 / Question**
+
+> 安全にアクセスしたい対象:
+> - **EC2 インスタンス** — Linux:**Tera Term（SSH）** / Windows:**リモートデスクトップ**
+> - **ウェブサイト**
+>
+> Secure-access targets:
+> - **EC2 instances** — Linux: **Tera Term (SSH)** / Windows: **Remote Desktop**
+> - **Website**
+
+**✅ 回答 / Answer**
+
+はい、3つともすべて Cloudflare で保護できます。どの場合も**サーバーの受信ポートは閉じたまま**にできます。ただし、**利用者の“つなぎ方”が対象ごとに違います**。
+
+Yes — all three can be protected by Cloudflare, and in every case the **servers' inbound ports stay
+closed**. The difference is **how each user connects**.
+
+**🔧 技術的:対象ごとのつなぎ方**
+
+| 対象 | 可否 | つなぎ方 | 利用者のPCに必要なもの | 閉じるポート |
+|---|---|---|---|---|
+| **ウェブサイト** | ✅ 簡単 | サイトを開く → Cloudflare のログイン画面 → 入る | **ブラウザだけ** | 80 / 443 |
+| **Linux SSH（Tera Term）** | ✅ 可能 | いつも通り Tera Term を開き、サーバーの**プライベートアドレス**に接続 | 無料の **WARP クライアント**（インストール＋ログイン） | 22 |
+| **Windows リモートデスクトップ** | ✅ 可能 | いつも通りリモートデスクトップを開き、**プライベートアドレス**に接続 | 無料の **WARP クライアント**（インストール＋ログイン） | 3389 |
+
+**重要な違い**
+
+- **ウェブサイト**は利用者のPCに何も要りません。**ブラウザとログインだけ**で入れます。
+- **SSH（Tera Term）と RDP（リモートデスクトップ）**はブラウザではなく**専用ツール**を使います。これらを無料で安全にする一番きれいな方法が **「WARP-to-Tunnel」** 方式です:
+  1. サーバー側で **`cloudflared` トンネル**を動かす（外向きだけの接続なので、SSH/RDP の公開ポートを閉じられる）。
+  2. 各利用者が無料の **Cloudflare WARP クライアント**をPCに入れてログイン（同じメールの本人確認）。
+  3. ログインすると、そのPCは**社内ネットワークにいるかのように**振る舞うので、**Tera Term とリモートデスクトップは今まで通りサーバーのプライベートアドレスに接続**できる（ただし先に本人確認が入る）。
+
+つまり、**今使っているツール（Tera Term・リモートデスクトップ）はそのまま**で、ポート 22（SSH）と 3389（RDP）はインターネットに**むき出しでなくなります**。
+
+**補足**
+
+- 上記はすべて**無料のゼロトラスト（最大50人）**に含まれます（WARP クライアントとプライベートネットワーク接続を含む）。
+- Cloudflare は**クライアント不要のブラウザRDP**（WARPもリモートデスクトップアプリも不要）も提供しています。便利ですが、Tera Term や標準のリモートデスクトップを使い続けたい場合は WARP 方式が最適です。
+- どのメールが接続してよいかの**アクセスポリシー**や、任意の **MFA** は、ウェブサイトと同じように SSH/RDP にも適用されます。
+
+*English*
+
+**🔧 Technical: how to connect, per target**
+
+| Target | Works? | How users connect | What the user's PC needs | Ports to close |
+|---|---|---|---|---|
+| **Website** | ✅ Easy | Open the site → Cloudflare login page → in | **A browser only** | 80 / 443 |
+| **Linux SSH (Tera Term)** | ✅ Yes | Open Tera Term as usual, connect to the server's **private address** | The free **WARP client** (install + log in) | 22 |
+| **Windows Remote Desktop** | ✅ Yes | Open Remote Desktop as usual, connect to the **private address** | The free **WARP client** (install + log in) | 3389 |
+
+**The key difference**
+
+- The **website** needs nothing on the user's PC — **a browser and login** is enough.
+- **SSH (Tera Term) and RDP (Remote Desktop)** use **desktop tools**, not a browser. The cleanest free way to secure them is the **"WARP-to-Tunnel"** model:
+  1. Run a **`cloudflared` tunnel** on the server (outbound-only, so the public SSH/RDP ports can be closed).
+  2. Each user installs the free **Cloudflare WARP client** and logs in (same email-based identity).
+  3. Once logged in, the PC behaves **as if it's on the private network**, so **Tera Term and Remote Desktop connect to the server's private address exactly as today** — just with identity checked first.
+
+So your **existing tools (Tera Term, Remote Desktop) stay unchanged**, while ports 22 (SSH) and 3389 (RDP) are **no longer exposed** to the internet.
+
+**Notes**
+
+- All of the above is included in the **free Zero Trust plan (up to 50 users)**, including the WARP client and private-network routing.
+- Cloudflare also offers **clientless, browser-based RDP** (no WARP client, no Remote Desktop app). Convenient, but the WARP method is the best fit if people want to keep using Tera Term / standard Remote Desktop.
+- **Access policies** (which emails may connect) and optional **MFA** apply to SSH and RDP the same way they apply to the website.
+
+---
+
 ## 👍 良い点・注意点 (Pros & Cons)
 
 この方式（独立VPC ＋ Cloudflare ゼロトラスト）の良い点と注意点をまとめます。
@@ -599,3 +736,14 @@ All key facts below were verified against these official / primary sources (as o
   https://community.cloudflare.com/t/maximum-upload-size-is-limit/418490
 - トンネルの遅延・スループットの傾向（コミュニティ報告） / Tunnel latency & throughput behavior (community reports):
   https://community.cloudflare.com/t/slower-tunnel-performance-outside-us-3-4x-slower/912777
+
+**移行・アクセス対象 / Migration & access targets**
+
+- RDS DB インスタンスを別VPC・別アカウントへ移行 / Migrate an RDS DB instance to another VPC or account:
+  https://docs.aws.amazon.com/prescriptive-guidance/latest/patterns/migrate-an-amazon-rds-db-instance-to-another-vpc-or-account.html
+- RDS スナップショットのコピー・共有（暗号化時のKMS含む） / Copy & share an RDS snapshot (incl. KMS for encrypted):
+  https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_CopySnapshot.html
+- WARP-to-Tunnel で RDP に接続 / Connect to RDP using WARP-to-Tunnel:
+  https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/use-cases/rdp/rdp-warp-to-tunnel/
+- ブラウザでRDPに接続（クライアント不要） / Connect to RDP in a browser (clientless):
+  https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/use-cases/rdp/rdp-browser/
