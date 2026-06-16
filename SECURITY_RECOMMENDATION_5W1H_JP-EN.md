@@ -527,33 +527,28 @@ Detailed answers to the real questions, in two parts: **(1) migrating existing s
 
 ### 🚚 パート1:AWSアカウント作成と既存サーバーの移行 (Part 1 — New AWS account & migrating existing servers)
 
-**❓ 質問 / Question**
+**❓ 論点 / The point**
 
-> テスト用のAWSアカウントを作る場合、今ある **EC2 インスタンス**と **RDS** は移行できますか?
-> （本番インスタンスの移行も可。停止が必要なら、お客様に事前通知し、利用していない時間帯に作業します。）
-> 対象:**受付予約システム**と **L-Three Solution のホームページ（CloudFront + S3）**。
->
-> If we create a (test) AWS account, can the current **EC2 instances** and **RDS** be migrated?
-> (Migrating the production instance is also acceptable. If a stop is needed, we notify the customer
-> in advance and work during unused hours.) Targets: the **reception reservation system** and the
-> **L-Three Solution homepage (CloudFront + S3)**.
+新しい（テスト用の）AWSアカウントを作る場合、今ある **EC2 インスタンス**・**RDS データベース**・**静的サイト（CloudFront + S3）** を移行できるか? 移行に停止が必要なら、いつ・どれくらい止まるのか?
+
+If you create a new (test) AWS account, can existing **EC2 instances**, **RDS databases**, and a **static site (CloudFront + S3)** be migrated? And if a stop is needed, when and for how long?
 
 **✅ 回答 / Answer**
 
-はい、すべて新しいAWSアカウントに移行できます。アカウントをまたぐ移行なので、切り替えの瞬間に**短い停止時間**が発生します（事前通知＋非利用時間の作業という御計画と合致します）。
+はい、すべて新しいAWSアカウントに移行できます。アカウントをまたぐ移行なので、切り替えの瞬間に**短い停止時間**が発生します。事前にお知らせし、利用の少ない時間帯に作業すれば、影響は抑えられます。
 
 Yes — all of them can be migrated to a new AWS account. Because it crosses accounts, there is a **short
-downtime at the cutover moment** (which fits your plan: notify in advance, work during unused hours).
+downtime at the cutover moment**. Announcing it in advance and doing the work during low-usage hours keeps the impact small.
 
 **🔧 技術的:各リソースの移行方法**
 
 | リソース | 移行方法 | 停止時間 |
 |---|---|---|
-| **EC2**（受付予約システムのサーバー） | ① インスタンスの **AMI（マシンイメージ）** を作成 → ② 新アカウントへ **共有** → ③ 新アカウントのVPC内で **そのAMIから起動**。OS・アプリ・設定・証明書・cron などサーバー丸ごと移る。 | 停止／スナップショット ＋ 切替の作業枠（通常 数十分） |
+| **EC2**（アプリのサーバー） | ① インスタンスの **AMI（マシンイメージ）** を作成 → ② 新アカウントへ **共有** → ③ 新アカウントのVPC内で **そのAMIから起動**。OS・アプリ・設定・証明書・cron などサーバー丸ごと移る。 | 停止／スナップショット ＋ 切替の作業枠（通常 数十分） |
 | **RDS**（データベース） | ① **手動スナップショット**を取得 → ② 新アカウントへ **共有** → ③ 新VPCで **新DBとして復元**。 | 最終同期・切替の作業枠 |
 | **ホームページ = CloudFront + S3** | S3 は「移動」ではなく、**中身を新バケットへコピー**（`aws s3 sync`）→ それを指す **CloudFront を作り直し** → **DNS を切替**。 | ほぼゼロ（DNS切替のみ） |
 
-**⚠️ お客様に伝えるべき重要点**
+**⚠️ 移行前に押さえる重要点**
 
 1. **IPアドレスが変わります。** 移行後、サーバーの住所が新しくなるので、DNS／Elastic IP／Cloudflare のホスト名を**指し直す**必要があります。（Cloudflare を前に置いていれば、トンネルの宛先を直すだけで楽になります。）
 2. **暗号化された RDS スナップショット**は1手間増えます。**カスタマー管理の KMS キー**を使い、そのキーも共有する必要があります（AWS既定のキーはアカウント間で共有不可）。
@@ -568,11 +563,11 @@ downtime at the cutover moment** (which fits your plan: notify in advance, work 
 
 | Resource | Method | Downtime |
 |---|---|---|
-| **EC2** (reception reservation system server) | ① Create an **AMI (machine image)** of the instance → ② **share** it with the new account → ③ **launch from that AMI** inside the new account's VPC. The whole server moves: OS, app, configs, certs, cron. | Stop/snapshot + cutover window (usually tens of minutes) |
+| **EC2** (application server) | ① Create an **AMI (machine image)** of the instance → ② **share** it with the new account → ③ **launch from that AMI** inside the new account's VPC. The whole server moves: OS, app, configs, certs, cron. | Stop/snapshot + cutover window (usually tens of minutes) |
 | **RDS** (database) | ① Take a **manual snapshot** → ② **share** it with the new account → ③ **restore as a new DB** in the new VPC. | Final-sync / cutover window |
 | **Homepage = CloudFront + S3** | S3 isn't "moved" — **copy the contents to a new bucket** (`aws s3 sync`) → **recreate CloudFront** pointing at it → **switch DNS**. | Near-zero (just a DNS switch) |
 
-**⚠️ Important points to tell the customer**
+**⚠️ Important points to note before migrating**
 
 1. **IP addresses change.** After migration the servers get new addresses, so DNS / Elastic IP / Cloudflare hostnames must be **repointed**. (If Cloudflare is already in front, you just update the tunnel's target — easier.)
 2. **Encrypted RDS snapshots** need one extra step: use a **customer-managed KMS key** and share that key too (the default AWS-managed key cannot be shared across accounts).
@@ -585,15 +580,17 @@ downtime at the cutover moment** (which fits your plan: notify in advance, work 
 
 ### 🔐 パート2:安全にアクセスしたい対象 (Part 2 — Secure access targets)
 
-**❓ 質問 / Question**
+**❓ 論点 / The point**
 
-> 安全にアクセスしたい対象:
-> - **EC2 インスタンス** — Linux:**Tera Term（SSH）** / Windows:**リモートデスクトップ**
-> - **ウェブサイト**
->
-> Secure-access targets:
-> - **EC2 instances** — Linux: **Tera Term (SSH)** / Windows: **Remote Desktop**
-> - **Website**
+安全にアクセスしたい代表的な対象は次の3つ。これらを Cloudflare で保護できるか?
+
+- **EC2 インスタンス** — Linux:**SSH（例:Tera Term）** / Windows:**リモートデスクトップ（RDP）**
+- **ウェブサイト**
+
+The three common targets we want to give secure access to — can Cloudflare protect them?
+
+- **EC2 instances** — Linux: **SSH (e.g. Tera Term)** / Windows: **Remote Desktop (RDP)**
+- **Website**
 
 **✅ 回答 / Answer**
 
