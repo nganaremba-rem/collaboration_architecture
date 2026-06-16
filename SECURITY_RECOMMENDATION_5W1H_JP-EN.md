@@ -13,6 +13,24 @@
 
 ---
 
+## 🧭 目次 (Table of Contents)
+
+1. [📖 用語集 (Glossary)](#-用語集-glossary--まず先に読むと分かりやすい)
+2. [📌 推奨 (Recommendation)](#-推奨-recommendation)
+3. [❓ なぜ (Why)](#-なぜ-why)
+4. [📦 何を (What)](#-何を-what)
+5. [🛠️ どうやって (How)](#-どうやって-how)
+6. [👥 誰が (Who)](#-誰が-who)
+7. [📍 どこで (Where)](#-どこで-where)
+8. [⏰ いつ (When)](#-いつ-when)
+9. [💰 費用 (Cost)](#-費用-cost)
+10. [✅ 動作確認 (Verification)](#-動作確認-verification)
+11. [🚀 速度と「100MBの上限」 (Performance & the 100 MB limit)](#-速度と100mbの上限-performance--the-100-mb-limit)
+12. [👍 良い点・注意点 (Pros & Cons)](#-良い点注意点-pros--cons)
+13. [🔗 出典 (Sources)](#-出典--sources)
+
+---
+
 ## 📖 用語集 (Glossary) — まず先に読むと分かりやすい
 
 技術用語の意味をやさしく説明します。下のどの言葉も、後の章で出てきます。
@@ -437,6 +455,121 @@ Everyone comes in through an address like `test.yourcompany.com` that goes throu
 
 ---
 
+## 🚀 速度と「100MBの上限」 (Performance & the 100 MB limit)
+
+**🔧 技術的**
+
+- トンネルは「利用者 → 近くの Cloudflare 拠点 → サーバー」と1回**遠回り**します。1リクエストあたり **およそ 50〜200ms** 追加されます。
+- ウェブUIの閲覧やテストサイト、ふつうの小〜中サイズの `git push` / `pull` では**ほぼ気になりません**。
+- 本当の注意点は速度ではなく**ハードな上限**です。**Free / Pro プランでは、1回のHTTPアップロードが 100MB を超えると拒否されます**（遅いのではなく**エラー**になる）。
+- GitLab で影響するもの:**HTTPS 経由の大きな `git push`**、**Git LFS**、**コンテナレジストリ（Dockerイメージ）**、**100MB超のCI成果物**。
+
+**回避策**
+
+1. **Git は SSH で使う**（`cloudflared access ssh`）。SSHはHTTPプロキシを通らないので **100MB上限を回避**できる。← GitLab での一番重要な対策。
+2. **レジストリ / LFS / 大きな成果物**は、トンネル経由ではなく **オブジェクトストレージ（例:S3）** に直接置く。上限も速度低下も避けられる。
+3. スループットが必要なら **`cloudflared` を複数台（レプリカ）**で動かし、`cloudflared` を動かすサーバーのCPUを不足させない。
+
+**🙂 やさしく**
+
+- 通路を通る分、ほんの少し**遠回り**になります（1回につき約0.05〜0.2秒）。ウェブ画面やふつうの作業では**気づかないレベル**です。
+- 本当の落とし穴は「遅さ」ではなく「**大きすぎる荷物は通せない**」こと。無料プランでは **1回に100MBを超えるアップロードは止められます**（遅いのではなく**失敗**します）。
+- これに引っかかるのは、**大きなコードの送信・大きなファイル・Dockerイメージ・大きなビルド成果物**など。
+
+**回避策**
+
+1. コードの送受信は **SSH** を使う。SSHは別の通り方なので、**100MBの壁を回避**できます（GitLabでの一番大事なコツ）。
+2. 大きなファイルやイメージは、通路を通さず **専用の保管庫（S3など）** に直接置く。
+3. もっと速さが欲しければ、通路（`cloudflared`）を**複数本**にして、動かすサーバーの力に余裕を持たせる。
+
+> ✅ まとめ:あなたの規模（50人未満、テストサイト＋GitLab）では**遅くて困ることはほぼありません**。
+> 唯一の本当の注意は **100MBのアップロード上限**。SSHを使えば、その心配もなくなります。
+
+*English*
+
+**🔧 Technical**
+
+- The tunnel adds one **detour**: user → nearest Cloudflare location → server. That's about **50–200 ms extra** per request.
+- For web-UI browsing, the test site, and normal small-to-medium `git push` / `pull`, **you won't really notice it**.
+- The real catch isn't speed — it's a **hard limit**. On the **Free / Pro plans, any single HTTP upload over 100 MB is rejected** (not slow — an **error**).
+- What this affects in GitLab: **large `git push` over HTTPS**, **Git LFS**, the **container registry (Docker images)**, and **CI artifacts over 100 MB**.
+
+**Workarounds**
+
+1. **Use Git over SSH** (`cloudflared access ssh`). SSH isn't HTTP-proxied, so it **bypasses the 100 MB limit**. ← The most important fix for GitLab.
+2. Put the **registry / LFS / large artifacts** in **object storage (e.g. S3)** directly, not through the tunnel. Avoids both the size limit and throughput caps.
+3. For more throughput, run **multiple `cloudflared` replicas** and don't starve the server running `cloudflared` of CPU.
+
+**🙂 Easy**
+
+- Going through the corridor is a tiny **detour** (about 0.05–0.2 seconds each time). For web screens and normal work it's **not noticeable**.
+- The real pitfall isn't "slow" — it's that **a too-big package can't pass**. On the free plan, **any upload over 100 MB at once is stopped** (it **fails**, it isn't just slow).
+- This bites things like **sending big code, big files, Docker images, and large build outputs**.
+
+**Workarounds**
+
+1. Send/receive code over **SSH**. SSH goes a different way, so it **gets around the 100 MB wall** (the most important tip for GitLab).
+2. Put big files and images in a **dedicated storage (like S3)** directly, not through the corridor.
+3. If you want more speed, run **several corridors** (`cloudflared`) and give the server enough power.
+
+> ✅ Bottom line: At your size (under 50 people, test site + GitLab), it is **very unlikely to feel slow**.
+> The only real thing to watch is the **100 MB upload limit** — and using SSH removes that worry too.
+
+---
+
+## 👍 良い点・注意点 (Pros & Cons)
+
+この方式（独立VPC ＋ Cloudflare ゼロトラスト）の良い点と注意点をまとめます。
+A quick summary of the upsides and the things to watch with this approach (separate VPC + Cloudflare Zero Trust).
+
+**👍 良い点 (Pros)**
+
+| 項目 | 内容 |
+|---|---|
+| 💸 **費用** | 50人未満なら永続的に **$0**。追加費用なし。 |
+| 🔒 **本人ベース** | IPではなく**本人のログイン**で制御。住所が変わっても本人なら入れる。 |
+| 🙈 **サーバーを隠せる** | 受信ポートを全部閉じられる。生のIPは外から**到達不可**になる。 |
+| 🧩 **IdP不要で始められる** | メールコード（One-time PIN）だけで開始可能。後でGoogleログインやMFAを追加できる。 |
+| 🏢 **本番に手を触れない** | テストを別VPC（任意で別アカウント）に作るだけ。本番は止めず変えない。 |
+| ⚙️ **構築が簡単** | 画面のコピペ中心。専用ハードや難しいネットワーク設定は不要。 |
+
+**⚠️ 注意点 (Cons / Watch-outs)**
+
+| 項目 | 内容 |
+|---|---|
+| 📦 **100MBの上限** | Free / Pro ではHTTPアップロードが100MB超で**失敗**。大きな`git push`・LFS・Dockerイメージは**SSHやS3で回避**が必要。 |
+| 🐢 **わずかな遅延** | 1リクエストあたり約50〜200msの遠回り。ふつうの作業では気にならないが、遠い拠点では体感することも。 |
+| 🔑 **SSHは追加設定** | Gitを SSH で使うチームは `cloudflared access ssh` の設定が必要。 |
+| 🚪 **締め出しリスク** | 設定ミスやCloudflare障害で入れなくなる恐れ。**AWS Session Manager の緊急経路**を必ず残す。 |
+| 🌐 **依存先が増える** | アクセスがCloudflareに依存する（Cloudflareが落ちると入口も止まる）。 |
+| 👥 **50人の上限** | 無料は50人まで。**それを超えると有料**プランが必要。 |
+
+*English*
+
+**👍 Pros**
+
+| Item | Detail |
+|---|---|
+| 💸 **Cost** | **$0** forever for under 50 people. No added cost. |
+| 🔒 **Person-based** | Controlled by **the person's login**, not IP. The right person gets in even when their address changes. |
+| 🙈 **Hides the server** | You can close all inbound ports. The raw IP becomes **unreachable** from outside. |
+| 🧩 **Start with no IdP** | Begin with just an email code (One-time PIN). Add Google login or MFA later. |
+| 🏢 **Production untouched** | You only build test in a separate VPC (optionally a separate account). Prod is never stopped or changed. |
+| ⚙️ **Easy to set up** | Mostly copy-paste from the screen. No special hardware or hard networking. |
+
+**⚠️ Cons / Watch-outs**
+
+| Item | Detail |
+|---|---|
+| 📦 **100 MB limit** | On Free / Pro, an HTTP upload over 100 MB **fails**. Large `git push`, LFS, and Docker images need a **workaround (SSH or S3)**. |
+| 🐢 **Small latency** | A ~50–200 ms detour per request. Unnoticeable for normal work, but far-away locations may feel it. |
+| 🔑 **SSH needs extra setup** | Teams using Git over SSH must set up `cloudflared access ssh`. |
+| 🚪 **Lock-out risk** | A misconfig or Cloudflare outage could lock you out. Always keep the **AWS Session Manager emergency path**. |
+| 🌐 **One more dependency** | Access now depends on Cloudflare (if Cloudflare is down, the entrance is down too). |
+| 👥 **50-user cap** | Free covers 50 people. **Beyond that you need a paid** plan. |
+
+---
+
 ## 🔗 出典 / Sources
 
 すべての主要な事実は、以下の公式・一次情報で確認済みです（2026年6月時点）。
@@ -459,3 +592,10 @@ All key facts below were verified against these official / primary sources (as o
   https://developers.cloudflare.com/cloudflare-one/access-controls/policies/
 - MFA（多要素認証）をポリシーで必須にする / Require MFA in an Access policy:
   https://developers.cloudflare.com/cloudflare-one/access-controls/policies/mfa-requirements/
+
+**速度・上限 / Performance & limits**
+
+- アップロードの上限は Free / Pro で100MB / Upload size limit is 100 MB on Free / Pro:
+  https://community.cloudflare.com/t/maximum-upload-size-is-limit/418490
+- トンネルの遅延・スループットの傾向（コミュニティ報告） / Tunnel latency & throughput behavior (community reports):
+  https://community.cloudflare.com/t/slower-tunnel-performance-outside-us-3-4x-slower/912777
