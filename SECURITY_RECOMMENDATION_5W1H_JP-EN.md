@@ -578,6 +578,109 @@ downtime at the cutover moment**. Announcing it in advance and doing the work du
 
 ---
 
+### 📋 移行の手順（ステップ・バイ・ステップ） (Migration — step by step)
+
+以下はすべて **AWS マネジメントコンソール（管理画面）** で操作できます。専門コマンドがなくても進められます。
+作業の前に、両方のアカウントの **アカウントID（12桁の数字）** を控えておきます。
+*（旧 = 今のアカウント、新 = テスト用に作る新アカウント）*
+
+You can do all of this in the **AWS Management Console**. No special commands are required.
+Before starting, note both accounts' **Account IDs (the 12-digit number)**.
+*(old = current account, new = the new account you create for test)*
+
+**ステップ 0:準備 (Step 0 — Prepare)**
+
+1. 新アカウントを作る:旧アカウントで **AWS Organizations** を開き、**「AWSアカウントを追加」** で新アカウントを作成（無料）。
+2. 新アカウントにログインし、**移行先のVPC**（建物）を作る。本番VPCとは**つながない**。
+3. **同じリージョン**で作業すると一番簡単（例:旧も新も東京リージョン）。
+
+**ステップ 1:EC2（サーバー）を移行 (Step 1 — Migrate EC2)**
+
+1. **旧アカウント** → EC2 → 対象インスタンスを選ぶ → **「アクション」→「イメージとテンプレート」→「イメージを作成」**。
+   - 名前を付けて作成。これが **AMI（サーバー丸ごとのコピー）** になる。
+2. 作った **AMI** を選ぶ → **「アクション」→「AMIを共有」** → **新アカウントのアカウントID** を入力して共有。
+   - AMIが暗号化されている場合は、使っている **KMSキーも新アカウントへ共有**する。
+3. **新アカウント** → EC2 → **「AMI」** → フィルタを **「プライベートイメージ」** にすると共有されたAMIが見える。
+4. そのAMIを選び **「AMIからインスタンスを起動」** → **新しいVPC／サブネット**を選び、**セキュリティグループ**を設定して起動。
+5. 起動後、アプリが正しく動くか**新環境でテスト**する（まだ本番切替はしない）。
+
+**ステップ 2:RDS（データベース）を移行 (Step 2 — Migrate RDS)**
+
+1. **旧アカウント** → RDS → 対象DB → **「アクション」→「スナップショットの取得」**（手動スナップショット）。
+2. そのスナップショットを選ぶ → **「アクション」→「スナップショットの共有」** → **新アカウントのID** を追加。
+   - 🔑 **暗号化されている場合:** AWS既定キーのままだと共有できません。先に **カスタマー管理のKMSキー**でスナップショットをコピーし、そのキーも新アカウントへ共有してから共有します。
+3. **新アカウント** → RDS → **「スナップショット」→「他のアカウントと共有」** タブに共有されたスナップショットが出る。
+4. それを選び **「スナップショットを復元」** → **新VPC**・インスタンスサイズを指定して新しいDBとして起動。
+5. 新サーバー（ステップ1）の接続先を、この**新DBのエンドポイント（住所）**に向け直す。
+6. 🟢 **停止を短くしたい場合:** スナップショット復元の代わりに **AWS DMS** で新旧DBを同期し続け、切替時の停止を **約5分未満**にできる。
+
+**ステップ 3:ホームページ（CloudFront + S3）を移行 (Step 3 — Migrate the static site)**
+
+1. **新アカウント** → S3 → **新しいバケットを作成**。
+2. 旧バケットの中身を新バケットへ**コピー**する（コンソールのコピー、または `aws s3 sync s3://旧バケット s3://新バケット`）。
+3. **新アカウント** → CloudFront → **新しいディストリビューションを作成** → オリジンに**新しいS3バケット**を指定。
+   - 独自ドメイン・SSL証明書を使っている場合は、新ディストリビューションにも設定（**ACM**で証明書を発行）。
+4. 新CloudFrontのURLで**表示を確認**してから、次のステップでDNSを切り替える。
+
+**ステップ 4:本番切替（カットオーバー） (Step 4 — Cutover)**
+
+1. 事前に利用者へ**メンテナンス時間を周知**（利用の少ない時間帯を選ぶ）。
+2. 切替直前に、RDSを**最終同期**（DMS利用時）またはアプリを止めて**最後のスナップショット**を取得。
+3. **DNS を新環境に向け直す**（Cloudflare のホスト名 / Route 53 のレコード / CloudFront のドメイン）。
+4. **動作確認**:サイト表示・ログイン・予約や保存などの主要機能をひと通りテスト。
+5. 問題があれば **DNSを旧環境に戻す**だけで**ロールバック**できる（旧環境は切替成功までしばらく残しておく）。
+6. 数日〜1週間、新環境を監視して問題がなければ、旧リソースを停止・削除。
+
+*English*
+
+All steps below are done in the **AWS Management Console**. No special commands needed.
+Before starting, note both accounts' **Account IDs**. *(old = current, new = the new test account)*
+
+**Step 0 — Prepare**
+
+1. Create the new account: in the old account open **AWS Organizations** → **"Add an AWS account"** (free).
+2. Log in to the new account and create the **destination VPC** (building). Do **not** connect it to the production VPC.
+3. Working in the **same region** for both is easiest (e.g. both in Tokyo).
+
+**Step 1 — Migrate EC2 (the server)**
+
+1. **Old account** → EC2 → select the instance → **Actions → Image and templates → Create image**.
+   - Give it a name. This becomes the **AMI (a full copy of the server)**.
+2. Select the **AMI** → **Actions → Share AMI** → enter the **new account's Account ID**.
+   - If the AMI is encrypted, also **share the KMS key** with the new account.
+3. **New account** → EC2 → **AMIs** → set the filter to **Private images** to see the shared AMI.
+4. Select it → **Launch instance from AMI** → choose the **new VPC/subnet**, set a **security group**, and launch.
+5. After it boots, **test the app in the new environment** (don't switch production yet).
+
+**Step 2 — Migrate RDS (the database)**
+
+1. **Old account** → RDS → select the DB → **Actions → Take snapshot** (a manual snapshot).
+2. Select that snapshot → **Actions → Share snapshot** → add the **new account's ID**.
+   - 🔑 **If encrypted:** you can't share it while it uses the default AWS key. First **copy** the snapshot with a **customer-managed KMS key**, share that key with the new account, then share the snapshot.
+3. **New account** → RDS → **Snapshots → Shared with me** tab shows the shared snapshot.
+4. Select it → **Restore snapshot** → choose the **new VPC** and instance size to launch it as a new DB.
+5. Repoint the new server (Step 1) to this **new DB's endpoint (address)**.
+6. 🟢 **To shorten downtime:** instead of snapshot-restore, use **AWS DMS** to keep old and new DB in sync and cut the switch-over outage to **under ~5 minutes**.
+
+**Step 3 — Migrate the static site (CloudFront + S3)**
+
+1. **New account** → S3 → **create a new bucket**.
+2. **Copy** the old bucket's contents into the new one (console copy, or `aws s3 sync s3://old-bucket s3://new-bucket`).
+3. **New account** → CloudFront → **create a new distribution** → set the origin to the **new S3 bucket**.
+   - If you use a custom domain / SSL, configure it on the new distribution too (issue the cert in **ACM**).
+4. **Check it loads** on the new CloudFront URL before switching DNS in the next step.
+
+**Step 4 — Cutover**
+
+1. **Announce a maintenance window** to users in advance (pick a low-usage time).
+2. Just before switching, do a **final sync** of RDS (if using DMS), or stop the app and take a **final snapshot**.
+3. **Repoint DNS to the new environment** (Cloudflare hostname / Route 53 record / CloudFront domain).
+4. **Verify:** test the site loading, login, and key actions (bookings, saving, etc.).
+5. If anything's wrong, **roll back** by simply pointing **DNS back to the old environment** (keep the old setup around until the switch is confirmed good).
+6. Watch the new environment for a few days to a week; once it's clean, stop and delete the old resources.
+
+---
+
 ### 🔐 パート2:安全にアクセスしたい対象 (Part 2 — Secure access targets)
 
 **❓ 論点 / The point**
