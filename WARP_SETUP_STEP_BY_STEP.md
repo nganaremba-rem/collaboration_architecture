@@ -1,0 +1,283 @@
+# 🪜 WARP Setup — Step by Step (Click by Click)
+
+> A complete, beginner-friendly guide to setting up **Cloudflare WARP** for the
+> **dev servers (GitLab + test site)** — written so you can follow each click.
+>
+> 🎯 **Goal:** let your team reach the dev servers by **logging in** (not by IP
+> address), **without ever giving WARP a path into production.**
+>
+> You will touch three places: **AWS**, the **dev server** (over SSH), and
+> **Cloudflare**. Follow top to bottom. Don't skip the safety notes.
+
+---
+
+## ✅ Before you start
+
+Have these ready:
+
+- [ ] An **AWS Console login** (to see the dev server's address).
+- [ ] A **company email** to make the Cloudflare account (not a personal Gmail).
+- [ ] **SSH access** to the dev server (you can log into it from a terminal).
+- [ ] About **30–45 minutes**, and a coffee ☕.
+
+### ⚠️ Two safety rules (read once)
+
+1. **Do NOT close any AWS ports during this guide.** Your current access keeps
+   working the whole time as a fallback. Nobody gets locked out.
+2. **Keep AWS Session Manager working** — it's your emergency way into the server
+   if anything ever goes wrong.
+
+---
+
+## 🟦 Part A — Find your dev server's private address (in AWS)
+
+We need the dev server's **private IP** (its address *inside* AWS, like `10.0.1.15`).
+
+1. Go to **<https://console.aws.amazon.com>** and log in.
+2. In the top search bar, type **EC2** → click **EC2**.
+3. Left menu → click **Instances**.
+4. Click the **dev server** (GitLab / test) in the list.
+5. In the panel below, open the **Networking** tab.
+6. Find **Private IPv4 address**. Write it down. Example: `10.0.1.15`.
+
+> 📝 **Write it here:** dev private IP = `________________`
+
+✅ **You should see:** a number like `10.0.1.x`. That's the address WARP will open.
+
+---
+
+## 🟦 Part B — (Recommended) Make sure that address won't change
+
+Good news about AWS:
+
+- The **private IP stays the same** when you **reboot or stop/start** the server.
+- It only changes if the server is **deleted and rebuilt** from scratch.
+- (The *public* IP changes on stop/start — but WARP doesn't use that one.)
+
+So for normal restarts, **you're already fine** — the private IP is stable.
+
+👉 **Only if** your team rebuilds the dev server often (not just reboots), do this
+so the address is locked forever:
+
+1. EC2 → **Instances** → click the dev server.
+2. **Actions → Networking → Manage IP addresses**.
+3. Under the network interface, **Assign a private IP** and tick **"Allow me to
+   choose"**, then type the exact address you wrote in Part A.
+4. **Save**.
+
+✅ **You should see:** the same private IP listed as assigned. It won't drift now.
+
+---
+
+## 🟦 Part C — Create the Cloudflare account + Zero Trust team
+
+1. Go to **<https://dash.cloudflare.com/sign-up>**.
+2. Sign up with the **company email** → confirm the email.
+3. After login, open the left menu → click **Zero Trust**.
+4. It asks for a **team name** → pick something simple, e.g. `yourcompany`.
+   - This becomes your login page: `yourcompany.cloudflareaccess.com`.
+   - ⚠️ This is **just a login portal name** — it is **not** your real website
+     domain, and it does **not** change your DNS.
+5. Choose the **Free** plan (up to 50 users, $0). Confirm.
+
+✅ **You should see:** the Zero Trust dashboard open.
+
+---
+
+## 🟦 Part D — Set the login method (One-time PIN)
+
+1. Zero Trust → left menu → **Settings**.
+2. Click **Authentication**.
+3. Under **Login methods**, confirm **One-time PIN** is **On** (it's on by default).
+
+✅ **You should see:** "One-time PIN — Enabled". People will log in by typing their
+email and getting a code.
+
+---
+
+## 🟦 Part E — Decide who is allowed to join
+
+This stops random people from enrolling their laptop.
+
+1. Zero Trust → **Settings** → **WARP Client**.
+2. Find **Device enrollment permissions** → click **Manage**.
+3. Click **Add a rule**.
+4. **Rule name:** `Company staff`.
+5. **Action:** `Allow`.
+6. Under **Include**, choose **Emails ending in** → type `@yourcompany.com`.
+   - (Or choose **Emails** and paste each person's email.)
+7. **Save**.
+
+✅ **You should see:** your new rule listed. Only those emails can now join.
+
+---
+
+## 🟦 Part F — Install the tunnel on the dev server
+
+The tunnel is a small program (`cloudflared`) that connects the server **outward**
+to Cloudflare. No incoming door is opened on the server.
+
+1. Zero Trust → left menu → **Networks** → **Tunnels**.
+2. Click **Create a tunnel**.
+3. Choose **Cloudflared** → **Next**.
+4. **Name** it `dev-tunnel` → **Save tunnel**.
+5. Cloudflare now shows an **install command**. Choose your server's system (e.g.
+   **Debian/Ubuntu 64-bit**). **Copy** the command shown.
+6. **SSH into the dev server** from your terminal:
+   ```
+   ssh your-user@<dev-server>
+   ```
+7. **Paste and run** the command Cloudflare gave you (it starts with
+   `curl ...` or `cloudflared service install ...`). Press Enter.
+8. Back in the Cloudflare page, wait until the tunnel shows
+   **Connected / 🟢 Healthy**.
+
+✅ **You should see:** 🟢 **Healthy** next to your tunnel. (If not, re-check you
+pasted the full command on the right server.)
+
+---
+
+## 🟥 Part G — Route ONLY the dev server (the important isolation step)
+
+This is the step that **keeps production safe.** We tell WARP about the **one dev
+address only** — never the whole network.
+
+1. Still in **Tunnels**, click your `dev-tunnel`.
+2. Open the **Private Network** tab.
+3. Click **Add a private network**.
+4. In the CIDR box, enter the dev IP **as a single address** by adding `/32`:
+   ```
+   10.0.1.15/32
+   ```
+   👉 Use **your** address from Part A, followed by **`/32`**.
+5. **Save**.
+
+> 🛑 **Do NOT enter the whole range** like `10.0.1.0/24`. That would open the entire
+> neighbourhood — and because the tunnel can reach **any host in the range it's
+> given**, WARP users could then reach **production servers** sitting in the same
+> network. The `/32` means "this one machine only."
+
+✅ **You should see:** exactly one entry, ending in `/32`. Nothing wider.
+
+---
+
+## 🟦 Part H — Tell WARP to actually carry that address
+
+By default, WARP **ignores** private addresses (like `10.x`). We must let our one
+dev address through.
+
+1. Zero Trust → **Settings** → **WARP Client**.
+2. Scroll to **Split Tunnels** → click **Manage**.
+3. Look at the mode at the top:
+   - **If it says "Exclude IPs and domains" (the default):**
+     find any entry that covers your address (e.g. `10.0.0.0/8`) and **remove just
+     that one** — OR switch the mode to **Include** (next option).
+   - **If you switch to "Include IPs and domains":**
+     remove the broad defaults and **Add** only your dev address: `10.0.1.15/32`.
+4. **Save**.
+
+> 💡 Simplest safe choice: switch to **Include** mode and add **only** your
+> `/32` dev address. Then WARP carries *just* that — nothing else private.
+
+✅ **You should see:** your dev `/32` address in the list (Include), or the broad
+private range removed (Exclude).
+
+---
+
+## 🟥 Part I — (Extra safety) Block production explicitly
+
+Belt-and-suspenders: add a rule that **denies** production, so even a future mistake
+can't reach it.
+
+1. Zero Trust → **Gateway** → **Firewall policies**.
+2. Open the **Network** tab → **Add a policy**.
+3. **Name:** `Block production`.
+4. **Action:** `Block`.
+5. Build the rule: **Destination IP** → **in** → type your **production**
+   address or range (e.g. `10.0.2.0/24` — the production subnet).
+6. **Save** and make sure it's **enabled** (and above any allow rules).
+
+✅ **You should see:** a `Block production` policy listed and enabled.
+
+> 🔎 Don't know production's address? Find it the same way as Part A (EC2 →
+> production instance → Networking → Private IPv4), then use its subnet.
+
+---
+
+## 🟦 Part J — Install WARP on a laptop & log in
+
+Do this on each team member's computer.
+
+1. Go to **<https://1.1.1.1/>** and download **Cloudflare WARP** (Windows / macOS).
+2. Install and **open** the app.
+3. Click the **gear ⚙️ (Settings)** → **Account** → **Login with Cloudflare Zero
+   Trust**.
+4. Type your **team name** from Part C (e.g. `yourcompany`).
+5. A browser opens → type your **company email** → you get a **code** by email →
+   type the code.
+6. Back in the app, toggle WARP **On**.
+
+✅ **You should see:** WARP says **Connected**.
+
+---
+
+## 🟩 Part K — Test (prove it works AND prove production is safe)
+
+From the **enrolled laptop** (WARP Connected):
+
+1. Open a browser to `https://10.0.1.15` (your dev IP) → **GitLab / test loads** ✅
+2. Try `git clone` / `git push` to the dev server → **works** ✅
+3. Open the **production reservation system** by its normal web link →
+   **still loads as usual** ✅ (WARP doesn't block it)
+
+Now prove the safety boundaries:
+
+4. Try to reach a **production** private address (e.g. `https://10.0.2.20`) →
+   **should NOT connect** ✅ (blocked by Part G's `/32` + Part I's deny rule)
+5. On a laptop **without WARP / not logged in**, try the dev IP →
+   **cannot reach it** ✅
+6. Turn on phone hotspot (a different network) on the enrolled laptop → dev still
+   works ✅ (proves it no longer depends on IP)
+
+✅ If all six match, you're done.
+
+---
+
+## 🟦 Part L — Later hardening (optional, when ready)
+
+Only after everyone is comfortably on WARP:
+
+- 🔒 **Close the old doors:** in the AWS Security Group, close inbound `80/443/22`
+  for the dev server and remove the old IP-allowlist rules.
+  **Keep AWS Session Manager** as your emergency entrance first.
+- 🛡️ **Add MFA:** require a passkey / Touch ID / Windows Hello (free), or add
+  Google login, for an extra layer.
+
+---
+
+## ✅ Final checklist
+
+- [ ] Dev private IP found (Part A) — and pinned if you rebuild servers (Part B).
+- [ ] Cloudflare account + Zero Trust team created, Free plan (Part C).
+- [ ] One-time PIN login confirmed (Part D).
+- [ ] Enrollment limited to company emails (Part E).
+- [ ] Tunnel installed on dev server — shows 🟢 **Healthy** (Part F).
+- [ ] **Only the `/32` dev address** routed — NOT the whole range (Part G).
+- [ ] Split Tunnel lets that one address through (Part H).
+- [ ] **Block-production** firewall policy enabled (Part I).
+- [ ] WARP installed + logged in on a laptop — **Connected** (Part J).
+- [ ] Dev reachable ✅ · production NOT reachable over WARP ✅ · reservation system
+      still works ✅ · works on a different network ✅ (Part K).
+- [ ] AWS ports still open as fallback (close only later — Part L).
+
+---
+
+## 🆘 If something goes wrong
+
+- **Dev won't load after connecting WARP:** Part H is the usual cause — the address
+  is still excluded. Switch Split Tunnel to **Include** and add the `/32`.
+- **Can't log in to WARP:** check Part E includes your email, and the team name in
+  Part J is spelled exactly right.
+- **Production *is* reachable (it shouldn't be):** re-check Part G is a `/32` (not
+  `/24`), and Part I's block policy is enabled and above any allow rules.
+- **Locked out of the server:** use **AWS Session Manager** (that's why we kept it).
