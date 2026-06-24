@@ -99,17 +99,25 @@ AWS についての朗報：
 
 ---
 
-## 🟦 パートD — ログイン方法を設定（ワンタイム PIN）
+## 🟦 パートD — ログイン方法を確認（ワンタイム PIN）
+
+朗報：**ここでオンにする操作は不要です。** ワンタイム PIN は **既定** です —
+ID プロバイダーを接続していない場合、各自はメールを入力してコードを受け取り
+ログインします。この画面は **確認のために開くだけ** です。
 
 1. Zero Trust → 左メニュー → **Team & Resources** → **Devices**。
-2. **Device profiles** タブを開く → **Management** サブタブをクリック。
-3. **Device enrollment（端末登録）** のボックス → **Manage** をクリック。
-4. **Login methods** タブを開く。
-5. **One-time PIN** が **On**（既定でオン）であることを確認。
+2. ページ上部の **Management** タブをクリック（「Device profiles」の隣）。
+3. **Device enrollment** セクションの **Device enrollment permissions** →
+   **Manage** をクリック。
+4. **Login methods** タブを開く。**Authentication** パネルが表示されます。
 
-✅ **表示されるはず：** **One-time PIN** が一覧にあり有効。各自メールを入力 →
-コードを受け取りログインします。
+✅ **表示されるはず：** Authentication パネル。画面の説明に *"By default, users can
+log in with a one-time pin."*（既定でワンタイム PIN でログイン可能）とあります。
+これで十分です。
 
+> 💡 後で別のログイン方法（Google、Microsoft など）を足したい場合は
+> **Integrations → Identity providers** で追加します — 本ガイドでは不要。
+>
 > 💡 この **Manage** 画面は開いたままに — **パートE** は隣のタブです。
 
 ---
@@ -119,17 +127,18 @@ AWS についての朗報：
 無関係な人が端末を登録するのを防ぎます。
 
 1. パートD と同じ場所：Zero Trust → **Team & Resources** → **Devices** →
-   **Device profiles** → **Management** → **Device enrollment** → **Manage**。
+   **Management** タブ → **Device enrollment permissions** → **Manage**。
 2. **Policies** タブを開く。
-3. **Add a rule（ルールを追加）** をクリック。
-4. **ルール名：** `Company staff`。
+3. **Create new policy（新しいポリシーを作成）** をクリック。
+4. **ポリシー名：** `Company staff`。
 5. **Action：** `Allow`。
 6. **Include** で **Emails ending in（末尾が一致するメール）** → `@yourcompany.com`
    と入力。
    - （または **Emails** を選び、各メンバーのメールを貼り付け。）
 7. **保存**。
 
-✅ **表示されるはず：** 追加したルールが一覧に出る。指定メールのみ登録可能に。
+✅ **表示されるはず：** 追加したポリシーが一覧に出る。指定メールのみ端末登録が可能に。
+（ポリシーが 1 つも無いと誰も参加できません — 最低 1 つ必要です。）
 
 ---
 
@@ -139,7 +148,7 @@ AWS についての朗報：
 Cloudflare へつなぎます。サーバー側に入口（受信ポート）は開きません。
 
 1. Zero Trust → 左メニュー → **Networks** → **Connectors**。
-2. **Create a tunnel（トンネルを作成）** をクリック。
+2. **Add a tunnel（トンネルを追加）** をクリック。
 3. **Cloudflared** を選択 → **Next**。
 4. 名前を `dev-tunnel` にする → **Save tunnel**。
 5. Cloudflare が **インストールコマンド** を表示。サーバーの OS（例 **Debian/Ubuntu
@@ -163,14 +172,15 @@ Cloudflare へつなぎます。サーバー側に入口（受信ポート）は
 ネットワーク全体は絶対に教えません。
 
 1. Zero Trust → **Networks** → **Routes**。
-2. **Create route** をクリック（アカウントによっては **Add CIDR route**）。
+2. **CIDR** タブのまま → **Add a route** をクリック。
 3. **CIDR** 欄に、開発 IP を **単一アドレス** として `/32` を付けて入力：
    ```
    10.0.1.15/32
    ```
    👉 パートA の **自分の** アドレス＋ **`/32`**。
-4. **Tunnel** のドロップダウンで `dev-tunnel` を選ぶ。
-5. **保存**。
+4. （任意）**Description：** `dev server`。
+5. **Tunnel** のドロップダウンで `dev-tunnel` を選ぶ。
+6. **保存**。
 
 > 🛑 **`10.0.1.0/24` のような全範囲は入れないこと。** それは近所一帯を開けてしまい
 > ます。トンネルは **与えられた範囲内のどのホストにも到達できる** ため、同じ
@@ -186,17 +196,17 @@ Cloudflare へつなぎます。サーバー側に入口（受信ポート）は
 WARP は既定で `10.x` のようなプライベートアドレスを **無視** します。開発用の 1
 アドレスだけ通します。
 
-1. Zero Trust → **Team & Resources** → **Devices** → **Device profiles** →
-   **General profiles**。
-2. 自分のプロファイル（通常は **Default**）→ **Configure** をクリック →
-   **Split Tunnels** までスクロール。
-3. 上部のモードを確認：
-   - **「Exclude IPs and domains」（既定）の場合：**
-     自分のアドレスを含むエントリ（例 `10.0.0.0/8`）を見つけて **それだけ削除** —
-     または **Include** モードに切り替える（次の選択肢）。
-   - **「Include IPs and domains」に切り替える場合：**
-     広い既定値を削除し、開発アドレス `10.0.1.15/32` **だけ** を **Add**。
-4. **保存**。
+1. Zero Trust → **Team & Resources** → **Devices** → **Device profiles** タブ。
+2. **General profiles** の下で、プロファイル名 **Default** をクリック → スライド
+   表示されるパネルで **Edit** をクリック。
+3. **Split Tunnels** セクションまでスクロール。ラジオボタンが 4 つあります：
+   - **「Exclude IPs and domains」が選択（既定）の場合：**
+     **Manage** をクリックし、自分のアドレスを含むエントリ（例 `10.0.0.0/8`）を
+     見つけて **それだけ削除** — または **Include** モードに切り替える（次の選択肢）。
+   - **「Include IPs and domains」を選ぶ場合：**
+     **Manage** をクリックし、広い既定値を削除して、開発アドレス
+     `10.0.1.15/32` **だけ** を **Add**。
+4. **保存**（プロファイルページの上部または下部）。
 
 > 💡 一番安全で簡単なのは **Include** モードに切り替え、`/32` の開発アドレス
 > **だけ** を追加すること。WARP はそれ *だけ* を運び、他のプライベートは運びません。
@@ -211,14 +221,14 @@ WARP は既定で `10.x` のようなプライベートアドレスを **無視*
 念のための二重対策：本番への到達を **拒否** するルールを足し、将来のミスでも
 本番に届かないようにします。
 
-1. Zero Trust → **Traffic policies** → **Network policies**
-   （古いアカウントでは **Gateway → Firewall policies → Network** タブ）。
-2. **Add a policy** をクリック。
+1. Zero Trust → **Traffic policies** → **Firewall policies**。
+2. **Network** タブを開く（DNS / HTTP の隣）→ **Add a policy** をクリック。
 3. **名前：** `Block production`。
 4. **Action：** `Block`。
 5. ルール：**Destination IP** → **in** → **本番** のアドレスまたは範囲
    （例 `10.0.2.0/24` ＝本番サブネット）を入力。
-6. **保存** し、**有効** にする（許可ルールより上に置く）。
+6. **保存** 後、ポリシーの **Status** トグルが **On** であることを確認（許可ルール
+   より **上** に置く — ルールは上から順に評価されます）。
 
 ✅ **表示されるはず：** `Block production` ポリシーが一覧にあり、有効。
 
