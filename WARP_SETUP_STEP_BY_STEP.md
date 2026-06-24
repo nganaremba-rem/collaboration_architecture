@@ -27,6 +27,14 @@ Have these ready:
 2. **Keep AWS Session Manager working** — it's your emergency way into the server
    if anything ever goes wrong.
 
+> 🧭 **Dashboard note (read once):** Cloudflare renamed **Zero Trust** to
+> **Cloudflare One**, and moved most settings around. The left menu may say either
+> name. The big change: the old **Settings → WARP Client** and **Settings →
+> Authentication** pages are gone. Those controls now live under **Team &
+> Resources → Devices**, and tunnels live under **Networks → Connectors**. This
+> guide uses the **current** paths. If a menu name looks slightly different, match
+> on the words in **bold** — Cloudflare tweaks labels often.
+
 ---
 
 ## 🟦 Part A — Find your dev server's private address (in AWS)
@@ -80,18 +88,28 @@ so the address is locked forever:
      domain, and it does **not** change your DNS.
 5. Choose the **Free** plan (up to 50 users, $0). Confirm.
 
+> 💳 **Heads-up:** during this signup Cloudflare often asks you to **add a payment
+> method** (credit card, PayPal, or Google Pay) to confirm the plan — even for the
+> **Free $0** plan. Adding it does **not** charge you. As long as you pick **Free**,
+> you are **never billed** unless you deliberately upgrade later. The card is just
+> kept on file.
+
 ✅ **You should see:** the Zero Trust dashboard open.
 
 ---
 
 ## 🟦 Part D — Set the login method (One-time PIN)
 
-1. Zero Trust → left menu → **Settings**.
-2. Click **Authentication**.
-3. Under **Login methods**, confirm **One-time PIN** is **On** (it's on by default).
+1. Zero Trust → left menu → **Team & Resources** → **Devices**.
+2. Open the **Device profiles** tab → click the **Management** sub-tab.
+3. Find the **Device enrollment** box → click **Manage**.
+4. Open the **Login methods** tab.
+5. Confirm **One-time PIN** is **On** (it's on by default).
 
-✅ **You should see:** "One-time PIN — Enabled". People will log in by typing their
-email and getting a code.
+✅ **You should see:** **One-time PIN** listed and enabled. People will log in by
+typing their email and getting a code.
+
+> 💡 Leave this **Manage** screen open — **Part E** is the next tab over.
 
 ---
 
@@ -99,8 +117,9 @@ email and getting a code.
 
 This stops random people from enrolling their laptop.
 
-1. Zero Trust → **Settings** → **WARP Client**.
-2. Find **Device enrollment permissions** → click **Manage**.
+1. Same place as Part D: Zero Trust → **Team & Resources** → **Devices** →
+   **Device profiles** → **Management** → **Device enrollment** → **Manage**.
+2. Open the **Policies** tab.
 3. Click **Add a rule**.
 4. **Rule name:** `Company staff`.
 5. **Action:** `Allow`.
@@ -117,7 +136,7 @@ This stops random people from enrolling their laptop.
 The tunnel is a small program (`cloudflared`) that connects the server **outward**
 to Cloudflare. No incoming door is opened on the server.
 
-1. Zero Trust → left menu → **Networks** → **Tunnels**.
+1. Zero Trust → left menu → **Networks** → **Connectors**.
 2. Click **Create a tunnel**.
 3. Choose **Cloudflared** → **Next**.
 4. **Name** it `dev-tunnel` → **Save tunnel**.
@@ -142,14 +161,14 @@ pasted the full command on the right server.)
 This is the step that **keeps production safe.** We tell WARP about the **one dev
 address only** — never the whole network.
 
-1. Still in **Tunnels**, click your `dev-tunnel`.
-2. Open the **Private Network** tab.
-3. Click **Add a private network**.
-4. In the CIDR box, enter the dev IP **as a single address** by adding `/32`:
+1. Zero Trust → **Networks** → **Routes**.
+2. Click **Create route** (some accounts say **Add CIDR route**).
+3. In the **CIDR** box, enter the dev IP **as a single address** by adding `/32`:
    ```
    10.0.1.15/32
    ```
    👉 Use **your** address from Part A, followed by **`/32`**.
+4. For **Tunnel**, pick your `dev-tunnel` from the dropdown.
 5. **Save**.
 
 > 🛑 **Do NOT enter the whole range** like `10.0.1.0/24`. That would open the entire
@@ -166,8 +185,10 @@ address only** — never the whole network.
 By default, WARP **ignores** private addresses (like `10.x`). We must let our one
 dev address through.
 
-1. Zero Trust → **Settings** → **WARP Client**.
-2. Scroll to **Split Tunnels** → click **Manage**.
+1. Zero Trust → **Team & Resources** → **Devices** → **Device profiles** →
+   **General profiles**.
+2. Find your profile (usually **Default**) → click **Configure** → scroll to
+   **Split Tunnels**.
 3. Look at the mode at the top:
    - **If it says "Exclude IPs and domains" (the default):**
      find any entry that covers your address (e.g. `10.0.0.0/8`) and **remove just
@@ -189,8 +210,9 @@ private range removed (Exclude).
 Belt-and-suspenders: add a rule that **denies** production, so even a future mistake
 can't reach it.
 
-1. Zero Trust → **Gateway** → **Firewall policies**.
-2. Open the **Network** tab → **Add a policy**.
+1. Zero Trust → **Traffic policies** → **Network policies**
+   (older accounts: **Gateway → Firewall policies → Network** tab).
+2. Click **Add a policy**.
 3. **Name:** `Block production`.
 4. **Action:** `Block`.
 5. Build the rule: **Destination IP** → **in** → type your **production**

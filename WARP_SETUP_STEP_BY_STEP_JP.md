@@ -27,6 +27,15 @@
    ずっと使えます。誰もロックアウトされません。
 2. **AWS Session Manager を使える状態に保つこと** — 万一のときの緊急入口です。
 
+> 🧭 **ダッシュボードの注意（最初に一読）：** Cloudflare は **Zero Trust** を
+> **Cloudflare One** に改名し、設定の置き場所を大きく動かしました。左メニューは
+> どちらの名前で表示されることもあります。大きな変更点：以前の
+> **Settings → WARP Client** と **Settings → Authentication** のページは
+> **なくなりました**。これらの設定は今 **Team & Resources → Devices** の下にあり、
+> トンネルは **Networks → Connectors** の下にあります。本ガイドは **最新の** 経路を
+> 使っています。メニュー名が少し違って見えても、**太字** の単語で照合してください
+> — Cloudflare はラベルを頻繁に変えます。
+
 ---
 
 ## 🟦 パートA — 開発サーバーのプライベートアドレスを調べる（AWS）
@@ -80,18 +89,28 @@ AWS についての朗報：
      **ありません**。DNS も変わりません。
 5. **Free** プラン（最大 50 ユーザー、$0）を選択。確定。
 
+> 💳 **注意：** このサインアップ時に、Cloudflare はプラン確認のため **支払い方法
+> （クレジットカード、PayPal、または Google Pay）の登録を求めることがよくあります** —
+> **無料（$0）プラン** でも同様です。登録しても **課金されません**。**Free** を
+> 選んでいる限り、自分で有料に **アップグレードしない限り請求はありません**。
+> カードは登録されるだけです。
+
 ✅ **表示されるはず：** Zero Trust ダッシュボードが開く。
 
 ---
 
 ## 🟦 パートD — ログイン方法を設定（ワンタイム PIN）
 
-1. Zero Trust → 左メニュー → **Settings（設定）**。
-2. **Authentication（認証）** をクリック。
-3. **Login methods** で **One-time PIN** が **On**（既定でオン）であることを確認。
+1. Zero Trust → 左メニュー → **Team & Resources** → **Devices**。
+2. **Device profiles** タブを開く → **Management** サブタブをクリック。
+3. **Device enrollment（端末登録）** のボックス → **Manage** をクリック。
+4. **Login methods** タブを開く。
+5. **One-time PIN** が **On**（既定でオン）であることを確認。
 
-✅ **表示されるはず：**「One-time PIN — Enabled」。各自メールを入力 → コードを受け取り
-ログインします。
+✅ **表示されるはず：** **One-time PIN** が一覧にあり有効。各自メールを入力 →
+コードを受け取りログインします。
+
+> 💡 この **Manage** 画面は開いたままに — **パートE** は隣のタブです。
 
 ---
 
@@ -99,8 +118,9 @@ AWS についての朗報：
 
 無関係な人が端末を登録するのを防ぎます。
 
-1. Zero Trust → **Settings** → **WARP Client**。
-2. **Device enrollment permissions（端末登録の許可）** → **Manage** をクリック。
+1. パートD と同じ場所：Zero Trust → **Team & Resources** → **Devices** →
+   **Device profiles** → **Management** → **Device enrollment** → **Manage**。
+2. **Policies** タブを開く。
 3. **Add a rule（ルールを追加）** をクリック。
 4. **ルール名：** `Company staff`。
 5. **Action：** `Allow`。
@@ -118,7 +138,7 @@ AWS についての朗報：
 トンネルは小さなプログラム（`cloudflared`）で、サーバーから **外向き** に
 Cloudflare へつなぎます。サーバー側に入口（受信ポート）は開きません。
 
-1. Zero Trust → 左メニュー → **Networks** → **Tunnels**。
+1. Zero Trust → 左メニュー → **Networks** → **Connectors**。
 2. **Create a tunnel（トンネルを作成）** をクリック。
 3. **Cloudflared** を選択 → **Next**。
 4. 名前を `dev-tunnel` にする → **Save tunnel**。
@@ -142,14 +162,14 @@ Cloudflare へつなぎます。サーバー側に入口（受信ポート）は
 ここが **本番を守る** ステップです。WARP に教えるのは **開発の 1 アドレスだけ** —
 ネットワーク全体は絶対に教えません。
 
-1. **Tunnels** で `dev-tunnel` をクリック。
-2. **Private Network（プライベートネットワーク）** タブを開く。
-3. **Add a private network** をクリック。
-4. CIDR 欄に、開発 IP を **単一アドレス** として `/32` を付けて入力：
+1. Zero Trust → **Networks** → **Routes**。
+2. **Create route** をクリック（アカウントによっては **Add CIDR route**）。
+3. **CIDR** 欄に、開発 IP を **単一アドレス** として `/32` を付けて入力：
    ```
    10.0.1.15/32
    ```
    👉 パートA の **自分の** アドレス＋ **`/32`**。
+4. **Tunnel** のドロップダウンで `dev-tunnel` を選ぶ。
 5. **保存**。
 
 > 🛑 **`10.0.1.0/24` のような全範囲は入れないこと。** それは近所一帯を開けてしまい
@@ -166,8 +186,10 @@ Cloudflare へつなぎます。サーバー側に入口（受信ポート）は
 WARP は既定で `10.x` のようなプライベートアドレスを **無視** します。開発用の 1
 アドレスだけ通します。
 
-1. Zero Trust → **Settings** → **WARP Client**。
-2. **Split Tunnels** までスクロール → **Manage** をクリック。
+1. Zero Trust → **Team & Resources** → **Devices** → **Device profiles** →
+   **General profiles**。
+2. 自分のプロファイル（通常は **Default**）→ **Configure** をクリック →
+   **Split Tunnels** までスクロール。
 3. 上部のモードを確認：
    - **「Exclude IPs and domains」（既定）の場合：**
      自分のアドレスを含むエントリ（例 `10.0.0.0/8`）を見つけて **それだけ削除** —
@@ -189,8 +211,9 @@ WARP は既定で `10.x` のようなプライベートアドレスを **無視*
 念のための二重対策：本番への到達を **拒否** するルールを足し、将来のミスでも
 本番に届かないようにします。
 
-1. Zero Trust → **Gateway** → **Firewall policies**。
-2. **Network** タブを開く → **Add a policy**。
+1. Zero Trust → **Traffic policies** → **Network policies**
+   （古いアカウントでは **Gateway → Firewall policies → Network** タブ）。
+2. **Add a policy** をクリック。
 3. **名前：** `Block production`。
 4. **Action：** `Block`。
 5. ルール：**Destination IP** → **in** → **本番** のアドレスまたは範囲
