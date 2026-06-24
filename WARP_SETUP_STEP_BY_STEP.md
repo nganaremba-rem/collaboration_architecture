@@ -98,17 +98,24 @@ so the address is locked forever:
 
 ---
 
-## 🟦 Part D — Set the login method (One-time PIN)
+## 🟦 Part D — Confirm the login method (One-time PIN)
+
+Good news: **nothing to switch on here.** One-time PIN is the **default** — when no
+identity provider is connected, people log in by typing their email and getting a
+code. You only need to *visit* this screen to confirm it.
 
 1. Zero Trust → left menu → **Team & Resources** → **Devices**.
-2. Open the **Device profiles** tab → click the **Management** sub-tab.
-3. Find the **Device enrollment** box → click **Manage**.
-4. Open the **Login methods** tab.
-5. Confirm **One-time PIN** is **On** (it's on by default).
+2. Click the **Management** tab (top of the page, next to "Device profiles").
+3. In the **Device enrollment** section, find **Device enrollment permissions** →
+   click **Manage**.
+4. Open the **Login methods** tab. You'll see an **Authentication** panel.
 
-✅ **You should see:** **One-time PIN** listed and enabled. People will log in by
-typing their email and getting a code.
+✅ **You should see:** the Authentication panel. The on-page text confirms: *"By
+default, users can log in with a one-time pin."* That's all you need.
 
+> 💡 Want extra login options later (Google, Microsoft, etc.)? Those are added under
+> **Integrations → Identity providers** — not needed for this guide.
+>
 > 💡 Leave this **Manage** screen open — **Part E** is the next tab over.
 
 ---
@@ -118,16 +125,17 @@ typing their email and getting a code.
 This stops random people from enrolling their laptop.
 
 1. Same place as Part D: Zero Trust → **Team & Resources** → **Devices** →
-   **Device profiles** → **Management** → **Device enrollment** → **Manage**.
+   **Management** tab → **Device enrollment permissions** → **Manage**.
 2. Open the **Policies** tab.
-3. Click **Add a rule**.
-4. **Rule name:** `Company staff`.
+3. Click **Create new policy** (or **Add current policies**, if shown).
+4. **Policy name:** `Company staff`.
 5. **Action:** `Allow`.
 6. Under **Include**, choose **Emails ending in** → type `@yourcompany.com`.
    - (Or choose **Emails** and paste each person's email.)
 7. **Save**.
 
-✅ **You should see:** your new rule listed. Only those emails can now join.
+✅ **You should see:** your new policy listed. Only those emails can now enroll a
+device. (At least one policy is required — without it, nobody can join.)
 
 ---
 
@@ -137,7 +145,7 @@ The tunnel is a small program (`cloudflared`) that connects the server **outward
 to Cloudflare. No incoming door is opened on the server.
 
 1. Zero Trust → left menu → **Networks** → **Connectors**.
-2. Click **Create a tunnel**.
+2. Click **Add a tunnel**.
 3. Choose **Cloudflared** → **Next**.
 4. **Name** it `dev-tunnel` → **Save tunnel**.
 5. Cloudflare now shows an **install command**. Choose your server's system (e.g.
@@ -162,14 +170,15 @@ This is the step that **keeps production safe.** We tell WARP about the **one de
 address only** — never the whole network.
 
 1. Zero Trust → **Networks** → **Routes**.
-2. Click **Create route** (some accounts say **Add CIDR route**).
+2. Stay on the **CIDR** tab → click **Add a route**.
 3. In the **CIDR** box, enter the dev IP **as a single address** by adding `/32`:
    ```
    10.0.1.15/32
    ```
    👉 Use **your** address from Part A, followed by **`/32`**.
-4. For **Tunnel**, pick your `dev-tunnel` from the dropdown.
-5. **Save**.
+4. (Optional) **Description:** `dev server`.
+5. For **Tunnel**, pick your `dev-tunnel` from the dropdown.
+6. **Save**.
 
 > 🛑 **Do NOT enter the whole range** like `10.0.1.0/24`. That would open the entire
 > neighbourhood — and because the tunnel can reach **any host in the range it's
@@ -185,17 +194,17 @@ address only** — never the whole network.
 By default, WARP **ignores** private addresses (like `10.x`). We must let our one
 dev address through.
 
-1. Zero Trust → **Team & Resources** → **Devices** → **Device profiles** →
-   **General profiles**.
-2. Find your profile (usually **Default**) → click **Configure** → scroll to
-   **Split Tunnels**.
-3. Look at the mode at the top:
-   - **If it says "Exclude IPs and domains" (the default):**
-     find any entry that covers your address (e.g. `10.0.0.0/8`) and **remove just
-     that one** — OR switch the mode to **Include** (next option).
-   - **If you switch to "Include IPs and domains":**
-     remove the broad defaults and **Add** only your dev address: `10.0.1.15/32`.
-4. **Save**.
+1. Zero Trust → **Team & Resources** → **Devices** → **Device profiles** tab.
+2. Under **General profiles**, click the profile name **Default** → in the panel
+   that slides in, click **Edit**.
+3. Scroll down to the **Split Tunnels** section. You'll see four radio buttons:
+   - **If "Exclude IPs and domains" is selected (the default):**
+     click **Manage**, find any entry covering your address (e.g. `10.0.0.0/8`) and
+     **remove just that one** — OR switch the mode to **Include** (next option).
+   - **If you select "Include IPs and domains":**
+     click **Manage**, remove the broad defaults, and **Add** only your dev address:
+     `10.0.1.15/32`.
+4. **Save** (top or bottom of the profile page).
 
 > 💡 Simplest safe choice: switch to **Include** mode and add **only** your
 > `/32` dev address. Then WARP carries *just* that — nothing else private.
@@ -210,14 +219,14 @@ private range removed (Exclude).
 Belt-and-suspenders: add a rule that **denies** production, so even a future mistake
 can't reach it.
 
-1. Zero Trust → **Traffic policies** → **Network policies**
-   (older accounts: **Gateway → Firewall policies → Network** tab).
-2. Click **Add a policy**.
+1. Zero Trust → **Traffic policies** → **Firewall policies**.
+2. Open the **Network** tab (next to DNS / HTTP) → click **Add a policy**.
 3. **Name:** `Block production`.
 4. **Action:** `Block`.
 5. Build the rule: **Destination IP** → **in** → type your **production**
    address or range (e.g. `10.0.2.0/24` — the production subnet).
-6. **Save** and make sure it's **enabled** (and above any allow rules).
+6. **Save**, then make sure the policy's **Status** toggle is **On** (and the policy
+   sits **above** any allow rules — they run top to bottom).
 
 ✅ **You should see:** a `Block production` policy listed and enabled.
 
