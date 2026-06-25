@@ -120,6 +120,12 @@ login works. **Nothing to change here — do NOT click Save.**
 > 💡 Want extra login options later (Google, Microsoft, etc.)? Those are added under
 > **Integrations → Identity providers** — not needed for this guide.
 >
+> ⚠️ **If WARP login shows only "Sign in with Cloudflare" (no email box):** Cloudflare
+> now connects a managed **Cloudflare** identity provider by default on new accounts.
+> While it is present, email **One-Time PIN is hidden**. To get email OTP back, go to
+> **Integrations → Identity providers**, open the **⋯** menu on **Cloudflare**, and
+> **Delete** it. With no identity provider connected, OTP becomes the default again.
+>
 > 💡 Leave this **Manage** screen open — **Part E** is the next tab over.
 
 ---
@@ -140,6 +146,11 @@ This stops random people from enrolling their laptop.
 
 ✅ **You should see:** your new policy listed. Only those emails can now enroll a
 device. (At least one policy is required — without it, nobody can join.)
+
+> ⚠️ **Do not skip or leave this unsaved.** If there is **no saved enrollment
+> policy**, WARP login fails with **"Enrollment request is invalid"** — even though
+> everything else looks correct. If you hit that error, come back here and confirm a
+> policy is listed (not just drafted in the builder).
 
 ---
 
@@ -290,6 +301,49 @@ Only after everyone is comfortably on WARP:
 
 ---
 
+## 🟧 Part M — Reaching a site that is **public + IP-allowlisted** (important gotcha)
+
+This is the trap that wastes the most time. Read it if your dev site has a **public
+web address** (e.g. behind an **AWS load balancer / ALB**) that is locked down by
+**whitelisting your office's static IP**.
+
+**The problem in one sentence:** when WARP is on, your traffic leaves through a
+**Cloudflare IP**, *not* your office IP — so the allowlist blocks you. It works in
+the office *without* WARP only because you come from the whitelisted office IP.
+
+So the public address (e.g. `gitlab-dev.example.com → 16.x.x.x`) is the **wrong door**
+for WARP. WARP only carries the server's **private** address (the `/32` from Part G,
+e.g. `172.31.x.x`). Two things must be true to reach the site **by name** over WARP:
+
+1. **The private path must actually work.** Test it with WARP connected:
+   ```
+   curl -vk --max-time 10 https://<PRIVATE-IP>/
+   ```
+   - **Any HTTP reply** (even a `302` redirect to the hostname) → the tunnel works;
+     go to step 2.
+   - **Timeout / no route** → the tunnel is not delivering traffic. This is
+     **server-side**, not in the Cloudflare dashboard. Ask whoever runs the server to:
+     - enable **`warp-routing: { enabled: true }`** in the `cloudflared` config
+       (the dashboard route alone is **not** enough), **and**
+     - open the **AWS Security Group** on the dev box to allow the `cloudflared`
+       host/SG on `443` (or `80`).
+
+2. **DNS must point the hostname at the private IP for WARP users.** A normal public
+   DNS lookup returns the *public* ALB IP, which WARP does not carry — and most apps
+   (GitLab included) redirect raw-IP access back to their hostname. Fix it with
+   **Cloudflare Zero Trust → Internal DNS** (create a record
+   `gitlab-dev.example.com → <PRIVATE-IP>` served only over WARP).
+   - ⚠️ **Local Domain Fallback does *not* fix this** for remote users — it hands DNS
+     to the device's local resolver, which off-network has no idea what the private IP
+     is.
+
+> 💡 If you only have **read-only** access to AWS and **do not control the domain's
+> DNS**, you cannot finish steps 1–2 yourself. Send the two bullet points in step 1
+> (warp-routing + Security Group) to the AWS owner, and ask the DNS owner for an
+> internal record (or to repoint the hostname to the tunnel).
+
+---
+
 ## ✅ Final checklist
 
 - [ ] Dev private IP found (Part A) — and pinned if you rebuild servers (Part B).
@@ -311,6 +365,13 @@ Only after everyone is comfortably on WARP:
 
 - **Dev won't load after connecting WARP:** Part H is the usual cause — the address
   is still excluded. Switch Split Tunnel to **Include** and add the `/32`.
+- **"Enrollment request is invalid" when logging in to WARP:** there is no **saved**
+  device-enrollment policy. Go to Part E and confirm a policy is **listed** (a draft
+  in the builder does not count).
+- **WARP login shows only "Sign in with Cloudflare", no email box:** delete the
+  managed **Cloudflare** identity provider (Part D note) so email OTP returns.
+- **Site works without WARP but not with it (public + IP-allowlisted):** see **Part M**
+  — you're hitting the public address; WARP only carries the private `/32`.
 - **Can't log in to WARP:** check Part E includes your email, and the team name in
   Part J is spelled exactly right.
 - **Production *is* reachable (it shouldn't be):** re-check Part G is a `/32` (not
