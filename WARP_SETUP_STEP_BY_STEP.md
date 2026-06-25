@@ -106,12 +106,16 @@ code. You only need to *visit* this screen to confirm it.
 
 1. Zero Trust → left menu → **Team & Resources** → **Devices**.
 2. Click the **Management** tab (top of the page, next to "Device profiles").
-3. In the **Device enrollment** section, find **Device enrollment permissions** →
-   click **Manage**.
-4. Open the **Login methods** tab. You'll see an **Authentication** panel.
+3. In the **Device enrollment** section, find **Device enrollment permissions**.
+   The text right there confirms: *"By default, users can log in with a one-time
+   pin."* — that's your proof OTP is on. Then click **Manage**.
+4. Open the **Login methods** tab. You'll see the **Authentication** panel (it now
+   has a **`New`** badge and **Identity / MFA** tabs — Cloudflare redesigned this
+   screen in mid-2025, so the old "one-time pin" sentence is no longer printed here).
 
-✅ **You should see:** the Authentication panel. The on-page text confirms: *"By
-default, users can log in with a one-time pin."* That's all you need.
+✅ **You should see:** the Authentication panel with **"Accept all available
+identity providers"** toggled **ON**. That ON state includes One-Time PIN, so OTP
+login works. **Nothing to change here — do NOT click Save.**
 
 > 💡 Want extra login options later (Google, Microsoft, etc.)? Those are added under
 > **Integrations → Identity providers** — not needed for this guide.
