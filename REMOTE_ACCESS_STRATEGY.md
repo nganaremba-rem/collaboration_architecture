@@ -48,12 +48,17 @@ Requirements: **secure**, ideally **free**, easy enough for non-technical staff.
 
 ## 3. Constraints we are working under
 
-1. **Read-only AWS.** Can view/connect to instances; **cannot** change security groups,
-   `cloudflared`, load balancers, or any AWS resource.
-2. **No control of `l3-solution.com` DNS.** Someone else owns it; we cannot change records.
-3. **Won't move the existing/production domain to Cloudflare** — risky (see §4).
-4. **No budget** — free tier only; reluctant to buy even a cheap domain.
-5. **Non-technical operator** — needs click-by-click; relies on an admin for AWS/server changes.
+1. **Full access to the GitLab instance.** The operator installed `cloudflared` on the
+   box themselves and can make server-side changes there (shell/sudo). Broad AWS-console
+   actions (security groups, load balancers) may be limited, but the dev box itself is in
+   reach — e.g. the box-side 443 shim can be done without waiting on anyone.
+2. **No control of the production domain's DNS.** Someone else manages it; we cannot
+   change records (this is what `DNS_MIGRATION_QUESTIONS.md` is for).
+3. **Won't move the existing/production domain to Cloudflare** without the owner doing it
+   properly — risky if records aren't copied first (see §4).
+4. **Prefer no cost** — free tier; reluctant (not unwilling) to buy a cheap domain.
+5. **Technical operator, small team.** Comfortable with shell/SSH/running commands; the
+   free plan (≤50 users) is plenty.
 6. Cloudflare free plan caps: **50 users**, **24h** log retention, **3 locations**.
 
 ---
